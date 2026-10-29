@@ -175,7 +175,7 @@ void AllTests()
 	TestCaseCartesianProduct();
 
 	std::cout << "\n==============================" << std::endl;
-	std::cout << "Áll Tests  run   : " << TestsRun << std::endl;
+	std::cout << "All Tests  run   : " << TestsRun << std::endl;
 	std::cout << "Only Tests passed: " << TestsPassed << std::endl;
 	std::cout << "Only Tests failed: " << (TestsRun - TestsPassed) << std::endl;
 }
