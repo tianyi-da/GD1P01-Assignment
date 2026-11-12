@@ -1,260 +1,262 @@
+//==============================================================================================
+//  MEDIA DESIGN SCHOOL AT STRAYER - DEPARTMENT OF GAME DEVELOPMENT
+//  GD1P01 - Introduction to Software Engineering | Final Project
 //
-// Bachelor of Software Engineering
-// Media Design School at Strayer
-// Auckland
-// New Zealand
-//
-// (c) 2026 Media Design School at Strayer
-//
-// File Name    : Board.cpp
-// Description  : Board implementation: placement, firing and drawing
-// Author       : Your Name
-// Mail         : your.name@mds.ac.nz
-//
+//  File:        Board.cpp
+//  Author:      URBANOZ
+//  Date:        09/11/2026
+//  Description: Implements the Board class: fleet placement, shot resolution and fleet status.
+//==============================================================================================
 
 #include "Board.h"
+
 #include <cstdlib>
 
 namespace
 {
-const char WATER = '~';
-const char SHIP = '#';
-const char HIT = 'X';
-const char MISS = 'o';
+    const char* const SHIP_NAMES[FLEET_SIZE] =
+    {
+        "Aircraft Carrier",
+        "Battleship",
+        "Destroyer",
+        "Submarine",
+        "Patrol Boat"
+    };
 
-const char* const SHIP_NAMES[FLEET_SIZE] = { "Aircraft Carrier", "Battleship", "Destroyer", "Submarine", "Patrol Boat" };
-const int SHIP_LENGTHS[FLEET_SIZE] = { 5, 4, 3, 3, 2 };
-
-const char* const ANSI_RESET = "\033[0m";
-const char* const ANSI_BLUE = "\033[34m";
-const char* const ANSI_GREEN = "\033[32m";
-const char* const ANSI_RED = "\033[1;31m";
-const char* const ANSI_YELLOW = "\033[1;33m";
+    const char SHIP_SYMBOLS[FLEET_SIZE] = { 'A', 'B', 'D', 'S', 'P' };
+    const int SHIP_LENGTHS[FLEET_SIZE] = { 5, 4, 3, 3, 2 };
 }
 
 Board::Board()
 {
-    // TF: Dynamic Memory
-    m_ships = new Ship[FLEET_SIZE];
     Reset();
-}
-
-Board::Board(const Board& other)
-{
-    m_ships = new Ship[FLEET_SIZE];
-    for (int r = 0; r < BOARD_SIZE; ++r)
-    {
-        for (int c = 0; c < BOARD_SIZE; ++c)
-        {
-            m_grid[r][c] = other.m_grid[r][c];
-            m_shipAt[r][c] = other.m_shipAt[r][c];
-        }
-    }
-    for (int i = 0; i < FLEET_SIZE; ++i)
-    {
-        m_ships[i] = other.m_ships[i];
-    }
-}
-
-Board::~Board()
-{
-    delete[] m_ships;
-    m_ships = nullptr;
 }
 
 void Board::Reset()
 {
-    for (int r = 0; r < BOARD_SIZE; ++r)
+    for (int row = 0; row < BOARD_SIZE; ++row)
     {
-        for (int c = 0; c < BOARD_SIZE; ++c)
+        for (int column = 0; column < BOARD_SIZE; ++column)
         {
-            m_grid[r][c] = WATER;
-            m_shipAt[r][c] = -1;
+            m_cells[row][column] = CELL_WATER;
         }
     }
-    for (int i = 0; i < FLEET_SIZE; ++i)
-    {
-        m_ships[i].Init(SHIP_NAMES[i], SHIP_LENGTHS[i]);
-    }
+
+    // Clearing the vector destroys every Ship, which frees each ship's hit map.
+    m_ships.clear();
 }
 
-bool Board::CanPlace(int shipIndex, int row, int col, bool horizontal) const
+bool Board::CanPlaceShip(const Ship& ship, int row, int column, Orientation orientation) const
 {
-    if (shipIndex < 0 || shipIndex >= FLEET_SIZE)
+    if (ship.GetLength() <= 0)
     {
         return false;
     }
-    const int length = m_ships[shipIndex].GetLength();
-    const int endRow = horizontal ? row : row + length - 1;
-    const int endCol = horizontal ? col + length - 1 : col;
 
-    if (row < 0 || col < 0 || endRow >= BOARD_SIZE || endCol >= BOARD_SIZE)
+    for (int offset = 0; offset < ship.GetLength(); ++offset)
     {
-        return false;
-    }
-    for (int i = 0; i < length; ++i)
-    {
-        const int r = horizontal ? row : row + i;
-        const int c = horizontal ? col + i : col;
-        if (m_shipAt[r][c] != -1)
+        const int currentRow = row + (orientation == Orientation::Vertical ? offset : 0);
+        const int currentColumn = column + (orientation == Orientation::Horizontal ? offset : 0);
+
+        // TF: Logical Operator - || rejects the position if any single part fails.
+        if (currentRow < 0 || currentRow >= BOARD_SIZE ||
+            currentColumn < 0 || currentColumn >= BOARD_SIZE)
         {
-            return false;   // overlaps another ship
+            return false;
+        }
+
+        if (m_cells[currentRow][currentColumn] != CELL_WATER)
+        {
+            return false;
         }
     }
+
     return true;
 }
 
-bool Board::PlaceShip(int shipIndex, int row, int col, bool horizontal)
+bool Board::PlaceShip(const Ship& ship, int row, int column, Orientation orientation)
 {
-    if (!CanPlace(shipIndex, row, col, horizontal) || m_ships[shipIndex].IsPlaced())
+    if (!CanPlaceShip(ship, row, column, orientation))
     {
         return false;
     }
-    const int length = m_ships[shipIndex].GetLength();
-    for (int i = 0; i < length; ++i)
+
+    // The ship is copied into the fleet; Ship's copy constructor handles the deep copy.
+    m_ships.push_back(ship);
+
+    // TF: Reference - placed is another name for the ship that now lives in the vector.
+    Ship& placed = m_ships.back();
+    placed.SetPosition(row, column, orientation);
+
+    for (int offset = 0; offset < placed.GetLength(); ++offset)
     {
-        const int r = horizontal ? row : row + i;
-        const int c = horizontal ? col + i : col;
-        m_grid[r][c] = SHIP;
-        m_shipAt[r][c] = shipIndex;
+        const int currentRow = placed.GetRow() +
+                               (orientation == Orientation::Vertical ? offset : 0);
+        const int currentColumn = placed.GetColumn() +
+                                  (orientation == Orientation::Horizontal ? offset : 0);
+
+        m_cells[currentRow][currentColumn] = placed.GetSymbol();
     }
-    m_ships[shipIndex].Place(row, col, horizontal);
+
     return true;
 }
 
-void Board::PlaceRandomly()
+void Board::PlaceFleetRandomly()
 {
+    for (int attempt = 0; attempt < 10; ++attempt)
+    {
+        Reset();
+
+        bool fleetComplete = true;
+
+        // TF: Iteration Structure - a for loop visits every ship in the fleet.
+        for (int index = 0; index < FLEET_SIZE; ++index)
+        {
+            Ship ship(SHIP_NAMES[index], SHIP_SYMBOLS[index], SHIP_LENGTHS[index]);
+            bool placed = false;
+            int tries = 0;
+
+            while (!placed && tries < MAX_PLACEMENT_ATTEMPTS)
+            {
+                // TF: Pseudo Random Number - rand() picks a start square and an orientation.
+                const int row = std::rand() % BOARD_SIZE;
+                const int column = std::rand() % BOARD_SIZE;
+                const Orientation orientation = (std::rand() % 2 == 0)
+                                                ? Orientation::Horizontal
+                                                : Orientation::Vertical;
+
+                placed = PlaceShip(ship, row, column, orientation);
+                ++tries;
+            }
+
+            if (!placed)
+            {
+                // Deterministic fallback: scan the board until a legal position is found.
+                for (int row = 0; row < BOARD_SIZE && !placed; ++row)
+                {
+                    for (int column = 0; column < BOARD_SIZE && !placed; ++column)
+                    {
+                        for (int choice = 0; choice < 2 && !placed; ++choice)
+                        {
+                            const Orientation orientation = (choice == 0)
+                                                            ? Orientation::Horizontal
+                                                            : Orientation::Vertical;
+
+                            placed = PlaceShip(ship, row, column, orientation);
+                        }
+                    }
+                }
+            }
+
+            if (!placed)
+            {
+                fleetComplete = false;
+                break;
+            }
+        }
+
+        if (fleetComplete && GetShipsAfloat() == FLEET_SIZE)
+        {
+            return;
+        }
+    }
+
+    // Last resort that always fits: five rows, all horizontal, starting in column A.
     Reset();
-    for (int i = 0; i < FLEET_SIZE; ++i)
+
+    for (int index = 0; index < FLEET_SIZE; ++index)
     {
-        bool placed = false;
-        while (!placed)
-        {
-            // TF: Pseudo Random Number
-            const int row = rand() % BOARD_SIZE;
-            const int col = rand() % BOARD_SIZE;
-            const bool horizontal = (rand() % 2) == 0;
-            placed = PlaceShip(i, row, col, horizontal);
-        }
+        Ship ship(SHIP_NAMES[index], SHIP_SYMBOLS[index], SHIP_LENGTHS[index]);
+        PlaceShip(ship, index * 2, 0, Orientation::Horizontal);
     }
 }
 
-ShotResult Board::Fire(int row, int col, int& sunkShipIndex)
+ShotResult Board::ReceiveShot(int row, int column, std::string& shipName)
 {
-    sunkShipIndex = -1;
+    shipName.clear();
 
-    // TF: Relational Operator
-    // TF: Logical Operator
-    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE)
+    if (row < 0 || row >= BOARD_SIZE || column < 0 || column >= BOARD_SIZE)
     {
         return ShotResult::Invalid;
     }
 
-    const char cell = m_grid[row][col];
-    if (cell == HIT || cell == MISS)
+    char& cell = m_cells[row][column];
+
+    if (cell == CELL_HIT || cell == CELL_MISS)
     {
-        return ShotResult::AlreadyShot;
+        return ShotResult::Invalid;
     }
-    if (cell == WATER)
+
+    Ship* ship = FindShipAt(row, column);
+
+    if (ship == nullptr)
     {
-        m_grid[row][col] = MISS;
+        cell = CELL_MISS;
         return ShotResult::Miss;
     }
 
-    m_grid[row][col] = HIT;
-    const int index = m_shipAt[row][col];
-    // TF: Pointer Initialised
-    Ship* shipPtr = &m_ships[index];
-    // TF: Pointer Dereferenced
-    // TF: Reference
-    Ship& hitShip = *shipPtr;
-    hitShip.RegisterHit();
-
-    if (hitShip.IsSunk())
+    // TF: Conditional Statement - the result depends on whether the ship is now sunk.
+    if (ship->RegisterHit(row, column) && ship->IsSunk())
     {
-        sunkShipIndex = index;
+        cell = CELL_HIT;
+        shipName = ship->GetName();
         return ShotResult::Sunk;
     }
+
+    cell = CELL_HIT;
+    shipName = ship->GetName();
     return ShotResult::Hit;
 }
 
-bool Board::AllShipsSunk() const
+bool Board::IsFleetDestroyed() const
 {
-    return ShipsAfloat() == 0;
+    return !m_ships.empty() && GetShipsAfloat() == 0;
 }
 
-int Board::ShipsAfloat() const
+int Board::GetShipsAfloat() const
 {
-    int count = 0;
-    for (int i = 0; i < FLEET_SIZE; ++i)
+    int afloat = 0;
+
+    for (std::size_t index = 0; index < m_ships.size(); ++index)
     {
-        if (!m_ships[i].IsSunk())
+        if (!m_ships[index].IsSunk())
         {
-            ++count;
+            ++afloat;
         }
     }
-    return count;
+
+    return afloat;
 }
 
-bool Board::HasBeenShot(int row, int col) const
+int Board::GetSunkShipCount() const
 {
-    return m_grid[row][col] == HIT || m_grid[row][col] == MISS;
+    return static_cast<int>(m_ships.size()) - GetShipsAfloat();
 }
 
-const Ship& Board::GetShip(int index) const
+char Board::GetCell(int row, int column) const
 {
-    return m_ships[index];
-}
-
-std::string Board::Header()
-{
-    std::string header = "   ";
-    for (int c = 0; c < BOARD_SIZE; ++c)
+    if (row < 0 || row >= BOARD_SIZE || column < 0 || column >= BOARD_SIZE)
     {
-        header += static_cast<char>('A' + c);
-        header += ' ';
+        return '?';
     }
-    return header;
+
+    return m_cells[row][column];
 }
 
-std::string Board::RowToString(int row, bool showShips) const
+const std::vector<Ship>& Board::GetShips() const
 {
-    std::string line;
-    if (row + 1 < 10)
+    return m_ships;
+}
+
+Ship* Board::FindShipAt(int row, int column)
+{
+    for (std::size_t index = 0; index < m_ships.size(); ++index)
     {
-        line += ' ';
+        if (m_ships[index].Occupies(row, column))
+        {
+            return &m_ships[index];
+        }
     }
-    line += std::to_string(row + 1);
-    line += ' ';
 
-    // TF: Iteration Structure
-    for (int col = 0; col < BOARD_SIZE; ++col)
-    {
-        char cell = m_grid[row][col];
-        if (cell == SHIP && !showShips)
-        {
-            cell = WATER;
-        }
-
-        const char* colour = ANSI_BLUE;
-        // TF: Conditional Statement
-        if (cell == SHIP)
-        {
-            colour = ANSI_GREEN;
-        }
-        else if (cell == HIT)
-        {
-            colour = ANSI_RED;
-        }
-        else if (cell == MISS)
-        {
-            colour = ANSI_YELLOW;
-        }
-
-        line += colour;
-        line += cell;
-        line += ANSI_RESET;
-        line += ' ';
-    }
-    return line;
+    return nullptr;
 }
